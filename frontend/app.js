@@ -135,6 +135,13 @@ class APIClient {
     async listNotebooks() {
         return this.request('/notebook/list');
     }
+
+    async executeTerminalCommand(command) {
+        return this.request('/terminal/execute', {
+            method: 'POST',
+            body: JSON.stringify({ command })
+        });
+    }
 }
 
 const api = new APIClient();
@@ -317,13 +324,13 @@ class UI {
             .map(([k, v]) => `${k}: ${typeof v === 'string' && v.length > 50 ? v.substring(0, 50) + '...' : v}`)
             .join(', ');
 
+        let icon = '🔧';
+        if (toolName === 'run_terminal_command') icon = '💻';
+
         toolCall.innerHTML = `
             <div class="tool-header">
                 <span class="tool-name">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
-                    </svg>
-                    ${toolName}
+                    ${icon} ${toolName}
                 </span>
                 <span class="tool-status ${status}">${status}</span>
             </div>
@@ -333,6 +340,21 @@ class UI {
         content.appendChild(toolCall);
 
         // Scroll to bottom
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        return toolCall;
+    }
+
+    static addCommandOutput(messageElement, output) {
+        const content = messageElement.querySelector('.message-content');
+        const outputDiv = document.createElement('div');
+        outputDiv.style.marginTop = '0.5rem';
+        outputDiv.innerHTML = `
+            <pre style="background: #000; padding: 0.5rem; border-radius: 4px; font-size: 0.8em; color: #0f0; overflow-x: auto;">${this.escapeHtml(output)}</pre>
+        `;
+        content.appendChild(outputDiv);
+
         const chatMessages = document.getElementById('chat-messages');
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
@@ -493,11 +515,11 @@ class AgentManager {
             if (result.tool_calls && result.tool_calls.length > 0) {
                 for (const toolCall of result.tool_calls) {
                     // Visualize tool call
-                    UI.addToolCall(agentMsgElement, toolCall.name, toolCall.arguments, toolCall.result);
+                    const toolCallElement = UI.addToolCall(agentMsgElement, toolCall.name, toolCall.arguments, toolCall.result);
 
                     // Apply tool effects to frontend state if needed
                     // (Most effects happen on backend, but we need to sync frontend)
-                    await this.handleToolEffect(toolCall.name, toolCall.arguments, toolCall.result);
+                    await this.handleToolEffect(toolCall.name, toolCall.arguments, toolCall.result, agentMsgElement);
                 }
             }
 
@@ -507,7 +529,7 @@ class AgentManager {
         }
     }
 
-    static async handleToolEffect(toolName, args, result) {
+    static async handleToolEffect(toolName, args, result, messageElement) {
         // Sync frontend state with backend changes
         if (toolName === 'update_cell' && result.success) {
             CellManager.updateCellCode(args.cell_id, args.code);
@@ -524,6 +546,20 @@ class AgentManager {
         else if (toolName === 'run_cell' && result.success) {
             // We need to actually run it on frontend to see animation/updates
             await CellManager.runCell(args.cell_id);
+        }
+        else if (toolName === 'run_terminal_command' && result.success) {
+            try {
+                const cmdResult = await api.executeTerminalCommand(args.command);
+                let output = cmdResult.stdout;
+                if (cmdResult.stderr) output += '\nSTDERR:\n' + cmdResult.stderr;
+                if (!output) output = '[No output]';
+
+                UI.addCommandOutput(messageElement, output);
+                UI.showToast('Command executed', 'success');
+            } catch (error) {
+                UI.addCommandOutput(messageElement, `Error: ${error.message}`);
+                UI.showToast('Command execution failed', 'error');
+            }
         }
     }
 }

@@ -1,36 +1,40 @@
-"""Main FastAPI application."""
+import os
 import logging
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import nbformat
+import asyncio
+import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any, Optional
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import nbformat
 
 from config import config
-from models import (
-    ExecuteCellRequest, ExecuteCellResponse,
-    CreateKernelResponse,
-    AnalyzeErrorRequest, AnalyzeErrorResponse,
-    GenerateCodeRequest, GenerateCodeResponse,
-    OptimizeNotebookRequest, OptimizeNotebookResponse,
-    SaveNotebookRequest, LoadNotebookResponse,
-    NotebookCellModel,
-    ChatRequest, ChatResponse
-)
 from kernel_manager import kernel_manager
 from ai_agent import agent_service, NotebookCell
+from models import (
+    CreateKernelResponse,
+    ExecuteCellRequest,
+    ExecuteCellResponse,
+    AnalyzeErrorRequest,
+    AnalyzeErrorResponse,
+    GenerateCodeRequest,
+    GenerateCodeResponse,
+    OptimizeNotebookRequest,
+    OptimizeNotebookResponse,
+    NotebookCellModel,
+    SaveNotebookRequest,
+    LoadNotebookResponse,
+    ChatRequest,
+    ChatResponse
+)
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
-app = FastAPI(
-    title="Jupyter Agent API",
-    description="Smart AI-powered notebook execution engine",
-    version="1.0.0"
-)
+app = FastAPI(title="Jupyter Agent API")
 
 # Configure CORS
 app.add_middleware(
@@ -41,101 +45,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get("/")
-async def root():
-    """Health check endpoint."""
-    return {
-        "status": "ok",
-        "message": "Jupyter Agent API is running",
-        "version": "1.0.0"
-    }
-
+# ==================== Kernel Management Endpoints ====================
 
 @app.post("/kernel/create", response_model=CreateKernelResponse)
 async def create_kernel():
     """Create a new Jupyter kernel."""
     try:
         kernel_id = await kernel_manager.create_kernel()
-        return CreateKernelResponse(
-            kernel_id=kernel_id,
-            status="created"
-        )
+        return CreateKernelResponse(kernel_id=kernel_id, status="ready")
     except Exception as e:
         logger.error(f"Error creating kernel: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/kernel/{kernel_id}/restart")
 async def restart_kernel(kernel_id: str):
-    """Restart a kernel."""
+    """Restart a Jupyter kernel."""
     try:
-        kernel = kernel_manager.get_kernel(kernel_id)
-        if not kernel:
-            raise HTTPException(status_code=404, detail="Kernel not found")
-        
-        await kernel.restart()
-        return {"status": "restarted", "kernel_id": kernel_id}
-    except HTTPException:
-        raise
+        await kernel_manager.restart_kernel(kernel_id)
+        return {"status": "restarted"}
     except Exception as e:
         logger.error(f"Error restarting kernel: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/kernel/{kernel_id}/interrupt")
-async def interrupt_kernel(kernel_id: str):
-    """Interrupt a running kernel."""
-    try:
-        kernel = kernel_manager.get_kernel(kernel_id)
-        if not kernel:
-            raise HTTPException(status_code=404, detail="Kernel not found")
-        
-        await kernel.interrupt()
-        return {"status": "interrupted", "kernel_id": kernel_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error interrupting kernel: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/kernel/{kernel_id}")
-async def shutdown_kernel(kernel_id: str):
-    """Shutdown a kernel."""
-    try:
-        await kernel_manager.shutdown_kernel(kernel_id)
-        return {"status": "shutdown", "kernel_id": kernel_id}
-    except Exception as e:
-        logger.error(f"Error shutting down kernel: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/execute", response_model=ExecuteCellResponse)
 async def execute_cell(request: ExecuteCellRequest):
-    """Execute a notebook cell."""
+    """Execute a code cell in a specific kernel."""
     try:
-        kernel = kernel_manager.get_kernel(request.kernel_id)
-        if not kernel:
-            raise HTTPException(status_code=404, detail="Kernel not found")
-        
-        result = await kernel.execute_cell(request.code, request.cell_id)
+        result = await kernel_manager.execute_cell(
+            request.kernel_id,
+            request.code,
+            request.cell_id
+        )
         return ExecuteCellResponse(**result)
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error executing cell: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== AI Agent Endpoints ====================
 
 @app.post("/agent/analyze-error", response_model=AnalyzeErrorResponse)
 async def analyze_error(request: AnalyzeErrorRequest):
-    """
-    Analyze an error and get intelligent fix suggestions.
-    
-    This is the SECRET SAUCE - the agent analyzes the entire notebook context
-    and suggests minimal, targeted fixes instead of rewriting everything.
-    """
+    """Analyze an error in a notebook cell."""
     try:
         # Convert to NotebookCell objects
         cells = [
@@ -187,8 +137,6 @@ async def generate_code(request: GenerateCodeRequest):
     except Exception as e:
         logger.error(f"Error generating code: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 
 @app.post("/agent/optimize", response_model=OptimizeNotebookResponse)
@@ -344,6 +292,35 @@ async def shutdown_event():
     logger.info("Shutting down, cleaning up kernels...")
     await kernel_manager.shutdown_all()
 
+# ==================== Terminal Endpoints ====================
+
+class TerminalCommandRequest(BaseModel):
+    command: str
+
+@app.post("/terminal/execute")
+async def execute_terminal_command(request: TerminalCommandRequest):
+    """
+    Execute a shell command and return the output.
+    """
+    try:
+        # Use subprocess to run the command
+        # shell=True allows using shell features like pipes and redirects, but be careful with input
+        # Since this is a local dev tool, we assume the user (via agent) is authorized
+        process = subprocess.run(
+            request.command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            cwd=os.getcwd() # Execute in project root
+        )
+        
+        return {
+            "stdout": process.stdout,
+            "stderr": process.stderr,
+            "returncode": process.returncode
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
