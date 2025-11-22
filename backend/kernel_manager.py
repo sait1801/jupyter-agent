@@ -151,7 +151,22 @@ class KernelManagerService:
         if kernel:
             await kernel.shutdown()
             del self.kernels[kernel_id]
+
+    async def restart_kernel(self, kernel_id: str):
+        """Restart a kernel."""
+        kernel = self.kernels.get(kernel_id)
+        if kernel:
+            await kernel.restart()
+        else:
+            raise ValueError(f"Kernel {kernel_id} not found")
     
+    async def execute_cell(self, kernel_id: str, code: str, cell_id: str) -> Dict[str, Any]:
+        """Execute a cell in a specific kernel."""
+        kernel = self.kernels.get(kernel_id)
+        if not kernel:
+            raise ValueError(f"Kernel {kernel_id} not found")
+        return await kernel.execute_cell(code, cell_id)
+
     async def shutdown_all(self):
         """Shutdown all kernels."""
         for kernel_id in list(self.kernels.keys()):

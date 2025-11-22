@@ -254,6 +254,7 @@ You have tools to manipulate notebook cells:
 - insert_cell: Add new cells at any position  
 - delete_cell: Remove cells
 - run_cell: Execute cells to test them
+- run_terminal_command: Run shell commands (pip install, file management, etc.)
 
 When the user asks you to do something:
 1. Use read_cells to understand the current state
