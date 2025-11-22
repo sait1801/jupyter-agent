@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jupyter Agent - Smart Cloud Notebook</title>
+    <meta name="description" content="AI-powered cloud notebook with intelligent cell-level debugging">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="32" height="32" rx="8" fill="url(#logo-gradient)" />
+                    <path d="M16 8L20 12H18V16H14V12H12L16 8Z" fill="white" />
+                    <path d="M16 24L12 20H14V16H18V20H20L16 24Z" fill="white" />
+                    <defs>
+                        <linearGradient id="logo-gradient" x1="0" y1="0" x2="32" y2="32">
+                            <stop offset="0%" stop-color="#667eea" />
+                            <stop offset="100%" stop-color="#764ba2" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span>Jupyter Agent</span>
+            </div>
+            <input type="text" id="notebook-name" class="notebook-name" placeholder="Untitled Notebook"
+                value="Untitled Notebook">
+        </div>
+
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="save-btn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path
+                        d="M13 2H11.5V5.5H4.5V2H3C2.45 2 2 2.45 2 3V13C2 13.55 2.45 14 3 14H13C13.55 14 14 13.55 14 13V3C14 2.45 13.55 2 13 2ZM12 12H4V7H12V12Z" />
+                </svg>
+                Save
+            </button>
+            <button class="btn btn-secondary" id="load-btn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path
+                        d="M3 2C2.45 2 2 2.45 2 3V13C2 13.55 2.45 14 3 14H13C13.55 14 14 13.55 14 13V5L11 2H3ZM3 3H10.5L13 5.5V13H3V3Z" />
+                </svg>
+                Load
+            </button>
+            <button class="btn btn-danger" id="restart-kernel-btn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path
+                        d="M8 3V1L5 4L8 7V5C10.21 5 12 6.79 12 9C12 11.21 10.21 13 8 13C5.79 13 4 11.21 4 9H2C2 12.31 4.69 15 8 15C11.31 15 14 12.31 14 9C14 5.69 11.31 3 8 3Z" />
+                </svg>
+                Restart Kernel
+            </button>
+            <div class="kernel-status" id="kernel-status">
+                <div class="status-indicator status-idle"></div>
+                <span>Idle</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Notebook Area -->
+        <div class="notebook-container">
+            <div id="cells-container" class="cells-container">
+                <!-- Cells will be dynamically added here -->
+            </div>
+
+            <button class="btn btn-primary add-cell-btn" id="add-cell-btn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 2V14M2 8H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </svg>
+                Add Cell
+            </button>
+        </div>
+
+        <!-- AI Agent Sidebar -->
+        <aside class="ai-sidebar" id="ai-sidebar">
+            <div class="sidebar-header">
+                <h2>AI Pair Programmer</h2>
+                <button class="btn-icon" id="toggle-sidebar">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M15 10L10 5V15L15 10Z" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="model-selector">
+                <label for="model-select">SELECT MODEL</label>
+                <select id="model-select" class="select">
+                    <optgroup label="OpenAI - Reasoning Models">
+                        <option value="o1-preview">o1-preview</option>
+                        <option value="o1-mini">o1-mini</option>
+                        <option value="gpt-5">GPT-5 (Preview)</option>
+                        <option value="gpt-5-mini">GPT-5 Mini</option>
+                    </optgroup>
+                    <optgroup label="OpenAI - Standard Models">
+                        <option value="gpt-4o" selected>GPT-4o</option>
+                        <option value="gpt-4o-mini">GPT-4o-mini</option>
+                    </optgroup>
+                    <optgroup label="Google Gemini">
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <!-- Chat Interface -->
+            <div class="chat-container" id="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="agent-message">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            <p><strong>Hello!</strong> I'm ready to help you code.</p>
+                            <p>I can read, edit, and run your notebook cells directly.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <textarea id="chat-input" class="chat-input" placeholder="Type a command... (e.g., 'Fix cell 2')"
+                        rows="1"></textarea>
+                    <button id="send-chat-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Modals -->
+    <div id="load-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Load Notebook</h3>
+                <button class="btn-icon close-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="notebooks-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
